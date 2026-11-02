@@ -47,3 +47,12 @@ for ip in ip_list:
     status = check(ip) #same check for every ip
     print(f"{ip} is {status}") #show the result
     save_result(ip, status) #keep a record so it can be checked later
+
+# lecture 1 code 2
+#for line in logs:         prints every line that has the word "BLOCK"
+#    if "BLOCK" in line:
+#        print(line)
+# lecture 2 code 1
+#ip_address = "10.0.0.5" -> found in the log
+#status = "BLOCK" -> action recorded by firewall
+#count = 4 -> amount of times the event was blocked
