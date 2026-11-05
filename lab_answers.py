@@ -197,25 +197,25 @@
 # Brute Force: 1
 
 # Task B3 -----------------------------------------------------
-import csv
+# import csv
 
-ip_counts = {}
+# ip_counts = {}
 
-with open("Week 4  - Lab Resources/security_incidents.csv", "r", newline="", encoding="utf-8") as file:
-      reader = csv.DictReader(file)
-      for row in reader:
-            ip = row["source_ip"]
-            if ip not in ip_counts:
-                  ip_counts[ip] = 0
-            ip_counts[ip] += 1
+# with open("Week 4  - Lab Resources/security_incidents.csv", "r", newline="", encoding="utf-8") as file:
+#       reader = csv.DictReader(file)
+#       for row in reader:
+#             ip = row["source_ip"]
+ #            if ip not in ip_counts:
+#                   ip_counts[ip] = 0
+#             ip_counts[ip] += 1
 
-top_ip = max(ip_counts, key=ip_counts.get)
-print(f"Source ip with the most incidents: {top_ip} ({ip_counts[top_ip]} incidents)")
+# top_ip = max(ip_counts, key=ip_counts.get)
+# print(f"Source ip with the most incidents: {top_ip} ({ip_counts[top_ip]} incidents)")
 
 # Task B3 Output
 # Source ip with the most incidents: 203.0.113.55 (5 incidents)
 
-# Task C1 -----------------------------------------------------
+# Task C2 -----------------------------------------------------
 # import json
 
 # with open("Week 4  - Lab Resources/vulnerabilities.json", "r", encoding="utf-8") as file:
@@ -226,7 +226,7 @@ print(f"Source ip with the most incidents: {top_ip} ({ip_counts[top_ip]} inciden
 #     if item["severity"] == "Critical":
 #         print(f'{item["host"]} | {item["vulnerability"]} | CVSS {item["cvss"]}')
 
-# Task C1 Output
+# Task C2 Output
 # Critical vulnerabilities: 
 # web01 | Remote Code Execution in Web Framework | CVSS 9.8
 # server01 | Privilege Escalation Vulnerability | CVSS 9.1
@@ -234,4 +234,17 @@ print(f"Source ip with the most incidents: {top_ip} ({ip_counts[top_ip]} inciden
 # workstation07 | Browser Sandbox Escape | CVSS 9.6
 # vpn01 | VPN Gateway Authentication Bypass | CVSS 9.9
 
-# Task C2 ----------------------------------------------------
+# Task C1 ----------------------------------------------------
+# import json
+
+# with open("Week 4  - Lab Resources/vulnerabilities.json", "r", encoding="utf-8") as file:
+#       data = json.load(file)
+
+# vulnerabilities = data["vulnerabilities"]
+# print(f"total vulnerabilities: {len(vulnerabilities)}")
+
+# Task C1 Output
+# total vulnerabilities: 12
+
+# Task C3 ---------------------------------------------------------
+import json
