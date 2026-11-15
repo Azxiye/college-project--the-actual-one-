@@ -12,6 +12,7 @@ import sys
 import pefile
 import winreg
 import ipaddress
+from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 FIREWALL_LOG = BASE_DIR / "firewall.log"
@@ -19,8 +20,8 @@ FIREWALL_LOG = BASE_DIR / "firewall.log"
 FIREWALL_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}\d{2}) "
     r"(?P<action>ALLOWED|BLOCKED) "
-    r"src=(?P<src>\S+) dst=(?<dst>\S+) "
-    r"proto=(?P<proto>TCP|UDP) port=(?<port>\S+) bytes=(?P<bytes>\S+)$"
+    r"src=(?P<src>\S+) dst=(?P<dst>\S+) "
+    r"proto=(?P<proto>TCP|UDP) port=(?P<port>\S+) bytes=(?P<bytes>\S+)$"
 )
 
 def parse_firewall_line(line):
@@ -60,3 +61,22 @@ def load_firewall_log(path):
 
     with open(path, "r", encoding="utf-8") as file:
         for line_number, raw_line in enumerate(file, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                events.append(parse_firewall_line(line))
+            except ValueError as error:
+                malformed.append((line_number, str(error),line))
+
+    return events, malformed
+
+if __name__ =="__main__":
+    events, malformed = load_firewall_log(FIREWALL_LOG)
+    print(f"Valid firewall events: {len(events)}")
+    print(f"Malformed lines: {len(malformed)}")
+    for line_number, reason, raw in malformed:
+        print(f"line {line_number}: {reason}")
+
+# error 1: forgot to add P in port=(?P<port>\S+) line 24
+# and forgot to add P in dst=(?P<dst>\S+) line 23
