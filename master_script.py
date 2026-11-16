@@ -16,6 +16,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).parent
 FIREWALL_LOG = BASE_DIR / "firewall.log"
+AUTH_LOG = BASE_DIR / "authentication.log"
 
 FIREWALL_PATTERN = re.compile(
     r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}\d{2}) "
@@ -23,6 +24,14 @@ FIREWALL_PATTERN = re.compile(
     r"src=(?P<src>\S+) dst=(?P<dst>\S+) "
     r"proto=(?P<proto>TCP|UDP) port=(?P<port>\S+) bytes=(?P<bytes>\S+)$"
 )
+
+AUTH_PATTERN = re.compile(
+    r"^(?P<timestamp>\d{4}-\d{2} \d{2}:\d{2}:\d{2}) "
+    r"(?P<action>LOGIN_SUCESS|LOGIN_FAILED|ACCOUNT_LOCKED|LOGOUT) "
+    r"user=(?P<user>\S+) src(?P<src>\S+) "
+    r"host(?P<host>\S+) method=(?P<method>\S+)$"
+)
+
 
 def parse_firewall_line(line):
     """converts one log line into a dictionary, raises ValueError with areason if it's a bad one"""
@@ -71,6 +80,12 @@ def load_firewall_log(path):
 
     return events, malformed
 
+def load_firewall_log(path):
+    return load_log(path, parse_firewall_line)
+
+def load_auth_log(path):
+    return load_log(path, parse_auth_line)
+
 if __name__ =="__main__":
     events, malformed = load_firewall_log(FIREWALL_LOG)
     print(f"Valid firewall events: {len(events)}")
@@ -80,3 +95,4 @@ if __name__ =="__main__":
 
 # error 1: forgot to add P in port=(?P<port>\S+) line 24
 # and forgot to add P in dst=(?P<dst>\S+) line 23
+
