@@ -2,10 +2,10 @@ import requests
 import os
 import re
 import csv
-import json
+import json                                 # all these imports are a "just in case" thing, and were from the lecture slides
 import socket
 import subprocess
-import platform
+import platform        
 import hashlib
 from datetime import datetime
 import sys
@@ -14,85 +14,61 @@ import winreg
 import ipaddress
 from pathlib import Path
 
-BASE_DIR = Path(__file__).parent
-FIREWALL_LOG = BASE_DIR / "firewall.log"
-AUTH_LOG = BASE_DIR / "authentication.log"
+FOLDER = Path(__file__).parent
+FIREWALL_LOG = FOLDER / "firewall.log"
 
-FIREWALL_PATTERN = re.compile(
-    r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}\d{2}) "
-    r"(?P<action>ALLOWED|BLOCKED) "
-    r"src=(?P<src>\S+) dst=(?P<dst>\S+) "
-    r"proto=(?P<proto>TCP|UDP) port=(?P<port>\S+) bytes=(?P<bytes>\S+)$"
-)
-
-AUTH_PATTERN = re.compile(
-    r"^(?P<timestamp>\d{4}-\d{2} \d{2}:\d{2}:\d{2}) "
-    r"(?P<action>LOGIN_SUCESS|LOGIN_FAILED|ACCOUNT_LOCKED|LOGOUT) "
-    r"user=(?P<user>\S+) src(?P<src>\S+) "
-    r"host(?P<host>\S+) method=(?P<method>\S+)$"
-)
-
+def get_value(part, name):
+    if not part.startswith(name + "="):
+        raise ValueError("expected " + name + "=")
+    return part[len(name) + 1:]
 
 def parse_firewall_line(line):
-    """converts one log line into a dictionary, raises ValueError with areason if it's a bad one"""
-    match = FIREWALL_PATTERN.match(line)
-    if not match:
-        raise ValueError("line doesnt match the firewall format")
+    parts = line.split()
 
-    fields = match.groupdict()
+    if len(parts) != 8:
+        raise ValueError("wrong number of fields")
 
-    try:
-        datetime.striptime(fields["timestamp"], "%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        raise ValueError(f"Invalid timestamp: {fields['timestamp']}")
+    action = parts[2]
+    if action not in ("ALLOWED", "BLOCKED"):
+        raise ValueError("unknown action " + action)
 
-    for key in ("src", "dst"):
-        try:
-            ipaddress.ip_ipaddress(fields[key])
-        except ValueError:
-            raise ValueError(f"invalid {key} IP Address: {fields[key]!r}")
+    src = get_value(parts[3], "src")
+    dst = get_value(parts[4], "dst")
+    port = get_value(parts[6], "port")
 
-        if not fields["port"].isdigit() or not 0 <= int(fields["port"]) <= 65535:
-            raise ValueError(f"invalid port: {fields['bytes']!r}")
-        if not fields["bytes"].isdigit():
-            raise ValueError(f"invalid byte count: {fields['bytes']!r}")
+    datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S")
 
-        fields["port"] = int(fields["port"])
-        fields["bytes"] = int(fields["bytes"])
-        return fields
+    ipaddress.ip_address(src)
+    ipaddress.ip_address(dst)
+    if not port.isdigit():
+        raise ValueError("port is not a number")
+
+    return {
+        "time": parts[0] + " " + parts[1],
+        "action": action,
+        "src": src,
+        "dst": dst,
+        "port": int(port),
+    }
 
 def load_firewall_log(path):
-    """reads the file and returns (valid_events, malformed_lines)
-       bad line is recorded and skipped     
-    """
     events = []
-    malformed = []
+    bad_lines = []
 
     with open(path, "r", encoding="utf-8") as file:
-        for line_number, raw_line in enumerate(file, start=1):
-            line = raw_line.strip()
-            if not line:
+        for number, line in enumerate(file, start=1):
+            line = line.strip()
+            if line =="":
                 continue
             try:
                 events.append(parse_firewall_line(line))
             except ValueError as error:
-                malformed.append((line_number, str(error),line))
+                bad_lines.append((number, str(error)))
 
-    return events, malformed
+    return events, bad_lines
 
-def load_firewall_log(path):
-    return load_log(path, parse_firewall_line)
-
-def load_auth_log(path):
-    return load_log(path, parse_auth_line)
-
-if __name__ =="__main__":
-    events, malformed = load_firewall_log(FIREWALL_LOG)
-    print(f"Valid firewall events: {len(events)}")
-    print(f"Malformed lines: {len(malformed)}")
-    for line_number, reason, raw in malformed:
-        print(f"line {line_number}: {reason}")
-
-# error 1: forgot to add P in port=(?P<port>\S+) line 24
-# and forgot to add P in dst=(?P<dst>\S+) line 23
-
+events, bad_lines = load_firewall_log(FIREWALL_LOG)
+print("Valid firewall events:", len(events))
+print("Malformed lines:", len(bad_lines))
+for number, reason in bad_lines:
+    print("line", number, "-", reason)
