@@ -191,12 +191,100 @@ def load_suspicious_ips(path):
     ips = []
     with open(path, "r", encoding="utf-8") as file:
         for line in file:
-            line = line.strip{}
+            line = line.strip()
             if line != "":
                 ips.append(line)
 
     return ips
 
+def find_observations(fw_events, auth_events, suspicious_ips):
+    observations = []
+    failed_ips = []
+
+    for event in auth_events:
+        if event["event"] == "LOGIN_FAILED":
+            failed_ips.append(event["src"])
+    for ip, count in top_n(count_items(failed_ips), TOP_N):
+        if count >= BRUTE_FORCE_LIMIT:
+            observations.append(
+                ip + " had " + str(count) + "failed logins. That many from one "
+                "address looks like automated password guessing, not people making typos."
+            )
+
+    fails_in_a_row = {}
+    for event in auth_events:
+        ip = event["src"]
+        if event["event"] == "LOGIN_FAILED":
+             fails_in_a_row[ip] == fails_in_a_row.get(ip, 0) + 1
+        elif event["event"] == "LOGIN_SUCCESS":
+            if fails_in_a_row.get(ip, 0) >= SUCCESS_AFTER_FAILS:
+                observations.append(
+                    ip + " failed " + str(fails_in_a_row[ip]) + " times and then loggin as '"
+                    + event["user"] + "' at " + event["time"] + ". The password might've been guessed, account will be treated as compromised"
+                )
+            fails_in_a_row[ip] = 0
+
+    lock_times = {}
+    for event in auth_events:
+        if event["event"] == "ACCOUNT_LOCKED":
+            user = event["user"]
+            if user not in lock_times:
+                lock_times[user] = []
+            lock_times[user].append(event["time"])
+    for user in lock_times:
+        times = lock_times[user]
+        if len(times) >= 2:
+            times_of_day = set()
+            for t in times:
+                times_of_day.add(t[11:])
+            text = "Account '" + user + "' was locked " + str(len(times)) = " times."
+            if len(times_of_day) == 1:
+                text += (" Every lockout was at exactly " + list(times_of_day)[0] +
+                         ", which suggests a scheduled script, not a person.")
+
+            observations.append(text)
+
+    allowed_ips = []
+    for event in fw_events:
+        if event["action"] == "ALLOWED":
+            allowed_ips.append(event["src"])
+    allowed_counts = count_items(allowed_ips)
+
+    success_ips = []
+    for event in auth_events:
+        if event["event"] == "LOGIN_SUCCESS":
+            success_ips.append(event["src"])
+    success_counts = count_items(success_ips)
+
+    allowed_text = []
+    success_text = []
+    for ip in suspicious_ips:
+        if allowed_counts.get(ip, 0) > 0:
+            allowed_text.append(ip + " (" + str(allowed_counts[ip]) + ")")
+        if success_counts.get(ip, 0) > 0:
+            success_text.append(ip + " (" + str(success_counts[ip]) + ")")
+    if len(allowed_text) > 0:
+        observations.append(
+            "These suspicious list IPs logged in successfully: " + "."join(success_text)
+            + ". A known bad address with a working login means an account may be compromised."
+        )
+
+    failed_total = 0
+    failed_privileged = 0
+    for event in auth_events:
+        if event["event"] == "LOGIN_FAILED":
+            failed_total += 1
+            if event["user"].lower() in PRIVILEGED_NAMES:
+                failed_privileged += 1
+    if failed_total > 0 and failed_privileged / failed_total >= 0.3:
+        percent = round(100 * failed_privileged / failed_total)
+        observations.append(
+            str(failed_privileged) + " of " + str(failed_total) + " failed login (" + str(percent)
+            + "%) were against admin, root or administrator. Attackers try these names first "
+            "because they exist on almost every system."
+        )
+
+    return observations
 print("FIREWALL LOG")
 fw_events, fw_bad = load_firewall_log(FIREWALL_LOG)
 print("Valid firewall events:", len(fw_events))
@@ -238,3 +326,11 @@ for ip, count in au["top_failed_ips"]:
 print("Most targeted usernames: ")
 for user, count in au["top_users"]:
     print("  ", user, "-", count)
+
+print()
+print("SECURITY OBSERVATIONS")
+suspicious_ips = load_suspicious_ips(SUSPICIOUS_FILE)
+observations = find_observations(fw_events, auth_events, suspicious_ips)
+for number, text in enumerate(observations, start=1):
+    print(str(number) + ". " + text)
+    print()
