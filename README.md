@@ -1,6 +1,6 @@
 # Security Log Investigation
-This is the actual repository for the project
-the main script is 'master_script.py'
+This is the actual repository for the project,
+the main script is 'master_script.py'. The outputs of the script will be created when you run the script once.
 
 # What does the script do?
 This script is to scan the logs and make a comprehensible output for the user and Analyst to read and understand.
@@ -10,8 +10,9 @@ and Security Observations.
 # How do I use this?
 - Download the latest release
 - Extract the ZIP file to anywhere
-- Open the folder in PowerShell (click on the directory bar in file explorer and type "powershell", it will have the directory of that folder when opened)
-- Type "python master.script.py"
+- Open the folder in PowerShell
+    - Open the folder in file explorer first, then type into the directory bar "powershell" and press enter.
+    - Lastly, type "python master_script.py"
 - Output will be printed
 
 # Requirements
