@@ -349,7 +349,51 @@ def save_csv(obvservations, path):
         for number, text in enumerate(observations, start=1):
             writer.writerow([number, text])
 
-        
+def main():
+    try:
+        fw_events, fw_bad = load_firewall_log(FIREWALL_LOG)
+        auth_events, auth_bad = load_auth_log(AUTH_LOG)
+    except FileNotFoundError as error:
+        print("ERROR: could not find a log file: ", error.filename)
+        print("Put the log files in the same folder as this script.")
+        return
+
+    try:
+        suspicious_ips = load_suspicious_ips(SUSPICIOUS_FILE)
+    except FileNotFoundError:
+        print("Warning: suspicious_ips.txt not found, skipping that check.")
+        suspicious_ips = []
+
+    fw = analyse_firewall(fw_events)
+    au = analyse_auth(auth_events)
+    observations = find_observations(fw_events, auth_events, suspicious_ips)
+
+    report_text = make_report_text(fw_events, fw_bad, auth_events, auth_bad, fw, au, observations, print(report_text))
+
+    try:
+        OUTPUT_FOLDER.mkdir(exist_ok=True)
+        save_text(report_text, OUTPUT_FOLDER / "investigation_summary.txt")
+        save_json(
+            {
+                "firewall": fw,
+                "authentication": au,
+                "observations": observations,
+                "malformed_firewall_lines": fw_bad,
+                "malformed_auth_lines": auth_bad,
+            },
+            OUTPUT_FOLDER / "investigation_summary.json",
+        )
+        save_csv(observations, OUTPUT_FOLDER / "observations.csv")
+    except OSError as error:
+        print("ERROR: could not save the reports:", error)
+        return
+
+    print()
+    print("Reports saved in:", OUTPUT_FOLDER)
+
+if __name__ == "__main__":
+    main()
+    
 fw_events, fw_bad = load_firewall_log(FIREWALL_LOG)
 auth_events, auth_bad = load_auth_log(AUTH_LOG)
 suspicious_ips = load_suspicious_ips(SUSPICIOUS_FILE)
