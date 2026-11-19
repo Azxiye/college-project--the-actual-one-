@@ -18,6 +18,7 @@ FOLDER = Path(__file__).parent
 FIREWALL_LOG = FOLDER / "firewall.log"
 AUTH_LOG = FOLDER / "authentication.log"
 SUSPICIOUS_FILE = FOLDER / "suspicious_ips.txt"
+OUTPUT_FOLDER = FOLDER / "output"
 
 def get_value(part, name):
     if not part.startswith(name + "="):
@@ -215,7 +216,7 @@ def find_observations(fw_events, auth_events, suspicious_ips):
     for event in auth_events:
         ip = event["src"]
         if event["event"] == "LOGIN_FAILED":
-             fails_in_a_row[ip] == fails_in_a_row.get(ip, 0) + 1
+            fails_in_a_row[ip] = fails_in_a_row.get(ip, 0) + 1
         elif event["event"] == "LOGIN_SUCCESS":
             if fails_in_a_row.get(ip, 0) >= SUCCESS_AFTER_FAILS:
                 observations.append(
@@ -237,7 +238,7 @@ def find_observations(fw_events, auth_events, suspicious_ips):
             times_of_day = set()
             for t in times:
                 times_of_day.add(t[11:])
-            text = "Account '" + user + "' was locked " + str(len(times)) = " times."
+            text = "Account '" + user + "' was locked " + str(len(times)) + " times."
             if len(times_of_day) == 1:
                 text += (" Every lockout was at exactly " + list(times_of_day)[0] +
                          ", which suggests a scheduled script, not a person.")
@@ -265,8 +266,8 @@ def find_observations(fw_events, auth_events, suspicious_ips):
             success_text.append(ip + " (" + str(success_counts[ip]) + ")")
     if len(allowed_text) > 0:
         observations.append(
-            "These suspicious list IPs logged in successfully: " + "."join(success_text)
-            + ". A known bad address with a working login means an account may be compromised."
+             "These suspicious-list IPs logged in successfully: " + ", ".join(success_text)
+            + ". A known-bad address with a working login means an account may be compromised."
         )
 
     failed_total = 0
@@ -279,58 +280,99 @@ def find_observations(fw_events, auth_events, suspicious_ips):
     if failed_total > 0 and failed_privileged / failed_total >= 0.3:
         percent = round(100 * failed_privileged / failed_total)
         observations.append(
-            str(failed_privileged) + " of " + str(failed_total) + " failed login (" + str(percent)
+            str(failed_privileged) + " of " + str(failed_total) + "  failed login (" + str(percent)
             + "%) were against admin, root or administrator. Attackers try these names first "
             "because they exist on almost every system."
         )
 
     return observations
-print("FIREWALL LOG")
+def add_top_list(lines, title, pairs):
+    lines.append(title)
+    for number, (item, count) in enumerate(pairs, start=1):
+        lines.append(" " + str(number) + ". " + str(item) + " - " +str(count))
+    lines.append("")
+
+def make_report_text(fw_events, fw_bad, auth_events, auth_bad, fw, au, observations):
+    lines = []
+    lines.append("SECURITY INVESTIGATION SUMMARY")
+    lines.append("=" * 60)
+    lines.append("")
+
+    lines.append("DATA QUALITY")
+    lines.append("firewall.log: " + str(len(fw_events)) + " valid " +  str(len(fw_bad)) + " malformed (skipped)")
+    for number, reason in fw_bad:
+        lines.append(" line " + str(number) + " - " + reason)
+    lines.append("authentication.log: " + str(len(auth_events)) + " valid, " + str(len(auth_bad)) + " malformed (skipped)")
+    for number, reason in auth_bad:
+        lines.append(" line " + str(number) + " - " + reason)
+    lines.append("")
+
+    lines.append("FIREWALL ANALYSIS")
+    lines.append("Valid Events: " + str(len(fw_events)))
+    lines.append("ALLOWED: " + str(fw["allowed"]))
+    lines.append("BLOCKED: " + str(fw["blocked"]))
+    lines.append("Unique source IPs: " + str(fw["unique_ips"]))
+    lines.append("")
+    add_top_list(lines, "Top Blocked IPs: ", fw["top_blocked_ips"])
+    add_top_list(lines, "Most targeted ports (blocked events):", fw["top_ports"])
+
+    lines.append("AUTHENTICATION ANALYSIS")
+    lines.append("Valid events " + str(len(auth_events)))
+    lines.append("LOGIN_SUCCESS: " + str(au["success"]))
+    lines.append("LOGIN_FAILED: " + str(au["failed"]))
+    lines.append("ACCOUNT_LOCKED: " + str(au["locked"]))
+    lines.append("(LOGOUT events, excluded above: " + str(au["logouts"]) + ")")
+    lines.append("")
+    add_top_list(lines, "Top failed-login IPs: ", au["top_failed_ips"])
+    add_top_list(lines, "Most targeted usernames:", au["top_users"])
+
+    lines.append("SECURITY OBSERVATIONS")
+    for number, text in enumerate(observations, start=1):
+        lines.append(str(number) + ". " + text)
+        lines.append("")
+
+    lines.append("Note: these are indicators to investigate, not proof of an attack.")
+    return "\n".join(lines)
+
+def save_text(text, path):
+    with open(path, "w", encoding="utf-8") as file:
+        file.write(text + "\n")
+
+def save_json(data, path):
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2)
+
+def save_csv(obvservations, path):
+    with open(path, "w", encoding="utf-8", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["number", "observation"])
+        for number, text in enumerate(observations, start=1):
+            writer.writerow([number, text])
+
+        
 fw_events, fw_bad = load_firewall_log(FIREWALL_LOG)
-print("Valid firewall events:", len(fw_events))
-print("Malformed lines:", len(fw_bad))
-for number, reason in fw_bad:
-    print("  line", number, "-", reason)
-
-print()
-print("AUTHENTICATION LOG")
 auth_events, auth_bad = load_auth_log(AUTH_LOG)
-print("Valid authentication events:", len(auth_events))
-print("Malformed lines:", len(auth_bad))
-for number, reason in auth_bad:
-    print("  line", number, "-", reason)
-
-print()
-print("FIREWALL ANALYSIS")
-fw = analyse_firewall(fw_events)
-print("ALLOWED:", fw["allowed"])
-print("BLOCKED:", fw["blocked"])
-print("Unique source IPs:", fw["unique_ips"])
-print("Top blocked IPs:")
-for ip, count in fw["top_blocked_ips"]:
-    print("  ", ip, "-", count)
-print("Most targeted ports (blocked events):")
-for port, count in fw["top_ports"]:
-    print("  ", port, "-", count)
-
-print()
-print("AUTHENTICATION ANALYSIS")
-au = analyse_auth(auth_events)
-print("LOGIN_SUCCESS:", au["success"])           
-print("LOGIN_FAILED:", au["failed"])                     
-print("ACCOUNT_LOCKED:", au["locked"])                  
-print("(LOGOUT events, not counted above:", au["logouts"], ")")   
-print("Top failed-login IPs:") 
-for ip, count in au["top_failed_ips"]:
-    print("  ", ip, "-", count)
-print("Most targeted usernames: ")
-for user, count in au["top_users"]:
-    print("  ", user, "-", count)
-
-print()
-print("SECURITY OBSERVATIONS")
 suspicious_ips = load_suspicious_ips(SUSPICIOUS_FILE)
+
+fw = analyse_firewall(fw_events)
+au = analyse_auth(auth_events)
 observations = find_observations(fw_events, auth_events, suspicious_ips)
-for number, text in enumerate(observations, start=1):
-    print(str(number) + ". " + text)
-    print()
+
+report_text = make_report_text(fw_events, fw_bad, auth_events, auth_bad, fw, au, observations)
+print(report_text)
+
+OUTPUT_FOLDER.mkdir(exist_ok=True)
+save_text(report_text, OUTPUT_FOLDER / "Investigation_summary.txt")
+save_json(
+    {
+        "firewall": fw,
+        "authentication": au,
+        "observations": observations,
+        "malformed_firewall_lines": fw_bad,
+        "malformed_auth_lines": auth_bad,
+    },
+    OUTPUT_FOLDER / "Investigation_summary.json",
+)
+save_csv(observations, OUTPUT_FOLDER / "observations.csv")
+print()
+print("Reports saved in :", OUTPUT_FOLDER)
