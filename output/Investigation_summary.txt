@@ -2,7 +2,7 @@ SECURITY INVESTIGATION SUMMARY
 ============================================================
 
 DATA QUALITY
-firewall.log: 892 valid 7 malformed (skipped)
+firewall.log: 892 valid, 7 malformed (skipped)
  line 308 - wrong number of fields
  line 487 - '' does not appear to be an IPv4 or IPv6 address
  line 623 - unknown action UNKNOWN
@@ -23,7 +23,7 @@ ALLOWED: 522
 BLOCKED: 370
 Unique source IPs: 202
 
-Top Blocked IPs: 
+Top Blocked IPs:
  1. 203.0.113.55 - 78
  2. 203.0.113.77 - 23
  3. 198.51.100.77 - 22
@@ -38,7 +38,7 @@ Most targeted ports (blocked events):
  5. 53 - 31
 
 AUTHENTICATION ANALYSIS
-Valid events 514
+Valid events: 514
 LOGIN_SUCCESS: 313
 LOGIN_FAILED: 163
 ACCOUNT_LOCKED: 5
@@ -59,18 +59,20 @@ Most targeted usernames:
  5. carol - 14
 
 SECURITY OBSERVATIONS
-1. 198.51.100.23 had 46failed logins. That many from one address looks like automated password guessing, not people making typos.
+1. 198.51.100.23 had 46 failed logins. That many from one address looks like automated password guessing, not people making typos.
 
-2. 203.0.113.55 had 20failed logins. That many from one address looks like automated password guessing, not people making typos.
+2. 203.0.113.55 had 20 failed logins. That many from one address looks like automated password guessing, not people making typos.
 
-3. 203.0.113.77 had 17failed logins. That many from one address looks like automated password guessing, not people making typos.
+3. 203.0.113.77 had 17 failed logins. That many from one address looks like automated password guessing, not people making typos.
 
-4. 203.0.113.77 failed 17 times and then loggin as 'admin' at 2026-10-12 14:51:00. The password might've been guessed, account will be treated as compromised
+4. 203.0.113.77 failed 17 times and then logged in as 'admin' at 2026-10-12 14:51:00. The password might've been guessed, account will be treated as compromised
 
 5. Account 'admin' was locked 5 times. Every lockout was at exactly 17:00:00, which suggests a scheduled script, not a person.
 
 6. These suspicious-list IPs logged in successfully: 203.0.113.77 (1), 198.51.100.18 (1). A known-bad address with a working login means an account may be compromised.
 
-7. 76 of 163  failed login (47%) were against admin, root or administrator. Attackers try these names first because they exist on almost every system.
+7. These suspicious-list IPs were ALLOWED through the firewall: 203.0.113.55 (1), 203.0.113.77 (2), 198.51.100.77 (8), 203.0.113.12 (1), 198.51.100.18 (2). Traffic from a known-bad address should normally be blocked.
+
+8. 76 of 163  failed logins (47%) were against admin, root or administrator. Attackers try these names first because they exist on almost every system.
 
 Note: these are indicators to investigate, not proof of an attack.
