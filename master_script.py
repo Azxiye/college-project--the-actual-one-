@@ -10,11 +10,12 @@ from datetime import datetime
 import ipaddress
 from pathlib import Path
 
+# Loading and Checking the firewall.log file ============================================================================
 FOLDER = Path(__file__).parent
-FIREWALL_LOG = FOLDER / "firewall.log"
-AUTH_LOG = FOLDER / "authentication.log"
-SUSPICIOUS_FILE = FOLDER / "suspicious_ips.txt"
-OUTPUT_FOLDER = FOLDER / "output"
+FIREWALL_LOG = FOLDER / "firewall.log"                  # directory for the specific file if variable is called  
+AUTH_LOG = FOLDER / "authentication.log"                # directory for the specific file if variable is called
+SUSPICIOUS_FILE = FOLDER / "suspicious_ips.txt"         # directory for the specific file if variable is called
+OUTPUT_FOLDER = FOLDER / "output"                       # files "firewall.log" "authentication.log" and "suspicious_ips.txt" will output here inside a folder
 
 def get_value(part, name):
     if not part.startswith(name + "="):
@@ -24,6 +25,9 @@ def get_value(part, name):
 def parse_firewall_line(line):
     parts = line.split()
 
+    # a good line will have 8 parts:
+    # date, time, ACTION, src=, dst=, proto=, port= bytes=
+    # anything less or more than 8 parts will count as a malformed line
     if len(parts) != 8:
         raise ValueError("wrong number of fields")
 
@@ -35,9 +39,10 @@ def parse_firewall_line(line):
     dst = get_value(parts[4], "dst")
     port = get_value(parts[6], "port")
 
-    datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S")
+    # checking if the value is real
+    datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S") # raises ValueError if date/time is a malformed one
 
-    ipaddress.ip_address(src)
+    ipaddress.ip_address(src) # the one raising if it's not a real IP
     ipaddress.ip_address(dst)
     if not port.isdigit():
         raise ValueError("port is not a number")
@@ -57,21 +62,25 @@ def load_firewall_log(path):
     with open(path, "r", encoding="utf-8") as file:
         for number, line in enumerate(file, start=1):
             line = line.strip()
-            if line =="":
+            if line =="": # skips empty lines
                 continue
             try:
                 events.append(parse_firewall_line(line))
             except ValueError as error:
-                bad_lines.append((number, str(error)))
+                bad_lines.append((number, str(error))) # remembers and continues
 
     return events, bad_lines
 
+# loading and checking the authentication.log file ============================================================================
+# however logout events will not be counted in the statistics later on
 AUTH_EVENTS = ("LOGIN_SUCCESS", "LOGIN_FAILED", "ACCOUNT_LOCKED", "LOGOUT")
 
 def parse_auth_line(line):
 
     parts = line.split()
 
+    # authentication.log has 7 parts
+    # date, time, EVENT, user=, src=, host=, method=
     if len(parts) != 7:
         raise ValueError("wrong number of fields")
 
@@ -83,7 +92,7 @@ def parse_auth_line(line):
     src = get_value(parts[4], "src")
     host = get_value(parts[5], "host")
 
-    datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S")
+    datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S") # checking if the values are real
     ipaddress.ip_address(src)
     if user == "":
         raise ValueError("username is empty")
@@ -113,6 +122,7 @@ def load_auth_log(path):
 
     return events, bad_lines
 
+# analysing firewall data from firewall.log ============================================================================
 TOP_N = 5
 
 def count_items(items):
@@ -129,16 +139,16 @@ def top_n(counts, n):
 def analyse_firewall(events):
     allowed = 0
     blocked = 0
-    all_ips = []
+    all_ips = []                   # statistics and dictionaries to store scanned data for firewall
     blocked_ips = []
     blocked_ports = []
 
     for event in events:
         all_ips.append(event["src"])
         if event["action"] == "ALLOWED":
-            allowed += 1
+            allowed += 1                                    # adds 1 to the "allowed" variable if the line EXACTLY has "ALLOWED" in the line
         else:
-            blocked += 1
+            blocked += 1                                    # adds 1 to the "blocked" variable if the line EXACTLY DOES NOT have "ALLOWED" in the line
             blocked_ips.append(event["src"])
             blocked_ports.append(event["port"])
 
@@ -154,15 +164,15 @@ def analyse_auth(events):
     success = 0
     failed = 0
     locked = 0
-    logouts = 0
+    logouts = 0                             # statistics and dictionaries to store scanned data for authentication
     failed_ips = []
     failed_users = []
 
     for event in events:
         if event["event"] == "LOGIN_SUCCESS":
-            success += 1
+            success += 1                                    # adds 1 to the "success" variable if line EXACTLY has "LOGIN_SUCCESS" in the line
         elif event["event"] == "LOGIN_FAILED": 
-            failed += 1
+            failed += 1                                     # adds 1 to the "failed" variable if line EXACTLY DOES NOT have "LOGIN_SUCCESS" in the line
             failed_ips.append(event["src"])
             failed_users.append(event["user"])
 
@@ -180,33 +190,36 @@ def analyse_auth(events):
         "top_users": top_n(count_items(failed_users), TOP_N),
     }
 
-BRUTE_FORCE_LIMIT = 10
-SUCCESS_AFTER_FAILS = 5
-PRIVILEGED_NAMES = ("admin", "root", "administrator")
+# security observations
+BRUTE_FORCE_LIMIT = 10                                          # if there is an 11th attempt, it will be added to the observation statistics.
+SUCCESS_AFTER_FAILS = 5                                         # if 5 login fails and 6th attempt is a success, it will be added to the observation statistics.
+PRIVILEGED_NAMES = ("admin", "root", "administrator")           # common names hijackers will try to take control
 
 def load_suspicious_ips(path):
     ips = []
     with open(path, "r", encoding="utf-8") as file:
         for line in file:
             line = line.strip()
-            if line != "":
+            if line != "": # skips empty lines
                 ips.append(line)
 
     return ips
 
 def find_observations(fw_events, auth_events, suspicious_ips):
     observations = []
-    failed_ips = []
+    failed_ips = [] # failed logins from one IP by password guessing
 
     for event in auth_events:
         if event["event"] == "LOGIN_FAILED":
             failed_ips.append(event["src"])
     for ip, count in top_n(count_items(failed_ips), TOP_N):
         if count >= BRUTE_FORCE_LIMIT:
-            observations.append(
+            observations.append(                                #
                 ip + " had " + str(count) + " failed logins. That many from one "
                 "address looks like automated password guessing, not people making typos.")
 
+    # a successful login after several failures (account compromised alert)
+    # this part reads from oldest to newest, top to bottom
     fails_in_a_row = {}
     for event in auth_events:
         ip = event["src"]
@@ -218,8 +231,8 @@ def find_observations(fw_events, auth_events, suspicious_ips):
                     ip + " failed " + str(fails_in_a_row[ip]) + " times and then logged in as '"
                     + event["user"] + "' at " + event["time"] + ". The password might've been guessed, account will be treated as compromised"
                 )
-            fails_in_a_row[ip] = 0
-
+            fails_in_a_row[ip] = 0 # success ends the run of failures
+     # the same account locked out again and again
     lock_times = {}
     for event in auth_events:
         if event["event"] == "ACCOUNT_LOCKED":
@@ -232,20 +245,21 @@ def find_observations(fw_events, auth_events, suspicious_ips):
         if len(times) >= 2:
             times_of_day = set()
             for t in times:
-                times_of_day.add(t[11:])
+                times_of_day.add(t[11:]) # keeps the HH:MM:SS part
             text = "Account '" + user + "' was locked " + str(len(times)) + " times."
             if len(times_of_day) == 1:
                 text += (" Every lockout was at exactly " + list(times_of_day)[0] +
                          ", which suggests a scheduled script, not a person.")
 
             observations.append(text)
-
+    # suspicious IPs that may or may not have been allowed by the firewall and them logging in
     allowed_ips = []
     for event in fw_events:
         if event["action"] == "ALLOWED":
             allowed_ips.append(event["src"])
     allowed_counts = count_items(allowed_ips)
 
+    # IPs that had a successful login attempt
     success_ips = []
     for event in auth_events:
         if event["event"] == "LOGIN_SUCCESS":
@@ -255,9 +269,9 @@ def find_observations(fw_events, auth_events, suspicious_ips):
     allowed_text = []
     success_text = []
     for ip in suspicious_ips:
-        if allowed_counts.get(ip, 0) > 0:
+        if allowed_counts.get(ip, 0) > 0: # ips that were allowed by the firewall
             allowed_text.append(ip + " (" + str(allowed_counts[ip]) + ")")
-        if success_counts.get(ip, 0) > 0:
+        if success_counts.get(ip, 0) > 0: # ips that had a successful login
             success_text.append(ip + " (" + str(success_counts[ip]) + ")")
 
     if len(success_text) > 0:
@@ -270,14 +284,14 @@ def find_observations(fw_events, auth_events, suspicious_ips):
             "These suspicious-list IPs were ALLOWED through the firewall: " + ", ".join(allowed_text)
             + ". Traffic from a known-bad address should normally be blocked."
         )
-
+    # attacks against admin usernames
     failed_total = 0
     failed_privileged = 0
     for event in auth_events:
         if event["event"] == "LOGIN_FAILED":
             failed_total += 1
             if event["user"].lower() in PRIVILEGED_NAMES:
-                failed_privileged += 1
+                failed_privileged += 1 # adds 1 count to the "failed_privileged" variable if there's a failed login attempt on the "admin", "adminstrator", or "root" usernames
     if failed_total > 0 and failed_privileged / failed_total >= 0.3:
         percent = round(100 * failed_privileged / failed_total)
         observations.append(
@@ -287,7 +301,7 @@ def find_observations(fw_events, auth_events, suspicious_ips):
         )
 
     return observations
-
+# building and saving the report =============================================================================================
 def add_top_list(lines, title, pairs):
     lines.append(title)
     for number, (item, count) in enumerate(pairs, start=1):
@@ -297,11 +311,11 @@ def add_top_list(lines, title, pairs):
 def make_report_text(fw_events, fw_bad, auth_events, auth_bad, fw, au, observations):
     lines = []
     lines.append("SECURITY INVESTIGATION SUMMARY")
-    lines.append("=" * 60)
+    lines.append("=" * 60)                                                                 # easy to read output
     lines.append("")
 
-    lines.append("DATA QUALITY")
-    lines.append("firewall.log: " + str(len(fw_events)) + " valid, " +  str(len(fw_bad)) + " malformed (skipped)")
+    lines.append("DATA QUALITY") # skips malformed lines in "firewall.log" if there's < 8 > variables in the line.
+    lines.append("firewall.log: " + str(len(fw_events)) + " valid, " +  str(len(fw_bad)) + " malformed (skipped)")                   # easy to read output
     for number, reason in fw_bad:
         lines.append(" line " + str(number) + " - " + reason)
     lines.append("authentication.log: " + str(len(auth_events)) + " valid, " + str(len(auth_bad)) + " malformed (skipped)")
@@ -312,7 +326,7 @@ def make_report_text(fw_events, fw_bad, auth_events, auth_bad, fw, au, observati
     lines.append("FIREWALL ANALYSIS")
     lines.append("Valid Events: " + str(len(fw_events)))
     lines.append("ALLOWED: " + str(fw["allowed"]))
-    lines.append("BLOCKED: " + str(fw["blocked"]))
+    lines.append("BLOCKED: " + str(fw["blocked"]))                                     # easy to read output
     lines.append("Unique source IPs: " + str(fw["unique_ips"]))
     lines.append("")
     add_top_list(lines, "Top Blocked IPs:", fw["top_blocked_ips"])
@@ -322,7 +336,7 @@ def make_report_text(fw_events, fw_bad, auth_events, auth_bad, fw, au, observati
     lines.append("Valid events: " + str(len(auth_events)))
     lines.append("LOGIN_SUCCESS: " + str(au["success"]))
     lines.append("LOGIN_FAILED: " + str(au["failed"]))
-    lines.append("ACCOUNT_LOCKED: " + str(au["locked"]))
+    lines.append("ACCOUNT_LOCKED: " + str(au["locked"]))                               # easy to read output
     lines.append("(LOGOUT events, excluded above: " + str(au["logouts"]) + ")")
     lines.append("")
     add_top_list(lines, "Top failed-login IPs: ", au["top_failed_ips"])
