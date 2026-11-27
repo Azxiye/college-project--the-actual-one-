@@ -60,7 +60,7 @@ def load_firewall_log(path):
     bad_lines = []
 
     with open(path, "r", encoding="utf-8") as file:
-        for number, line in enumerate(file, start=1):
+        for number, line in enumerate(file, start=1): # reads the lines in the logs one at a time
             line = line.strip()
             if line =="": # skips empty lines
                 continue
@@ -79,14 +79,14 @@ def parse_auth_line(line):
 
     parts = line.split()
 
-    # authentication.log has 7 parts
+    # authentication.log has 7 part
     # date, time, EVENT, user=, src=, host=, method=
-    if len(parts) != 7:
-        raise ValueError("wrong number of fields")
+    if len(parts) != 7: 
+        raise ValueError("wrong number of fields") # raises error if the line DOES NOT HAVE 7 parts
 
     event = parts[2]
-    if event not in AUTH_EVENTS:
-        raise ValueError("unknown event " + event)
+    if event not in AUTH_EVENTS:                        # Raises error if the "event" is not listed in
+        raise ValueError("unknown event " + event)      # "AUTH_EVENTS"
 
     user = get_value(parts[3], "user")
     src = get_value(parts[4], "src")
@@ -94,36 +94,36 @@ def parse_auth_line(line):
 
     datetime.strptime(parts[0] + " " + parts[1], "%Y-%m-%d %H:%M:%S") # checking if the values are real
     ipaddress.ip_address(src)
-    if user == "":
-        raise ValueError("username is empty")
+    if user == "":                                   # Raises error if the username is empty
+        raise ValueError("username is empty")           
 
     return {
         "time": parts[0] + " " + parts[1],
-        "event": event,
-        "user": user,
+        "event": event,                         # gives back one line as a dictionary
+        "user": user,                           # only works if the checks above this passed
         "src": src,
         "host": host,
     }
 
 def load_auth_log(path):
-    """Read the file. Return (good_events, bad_lines)."""
+    # Reads the file and Returns (good_events, bad_lines).
     events = []
     bad_lines = []
 
     with open(path, "r", encoding="utf-8") as file:
-        for number, line in enumerate(file, start=1):
+        for number, line in enumerate(file, start=1): # reads the file one line at a time
             line = line.strip()
-            if line == "":
+            if line == "": # skips empty lines
                 continue
             try:
                 events.append(parse_auth_line(line))
             except ValueError as error:
-                bad_lines.append((number, str(error)))
+                bad_lines.append((number, str(error))) # remembers the bad line and continues
 
     return events, bad_lines
 
 # analysing firewall data from firewall.log ============================================================================
-TOP_N = 5
+TOP_N = 5 # shows 5 outputs, changing it to 10 shows 10 outputs, etc
 
 def count_items(items):
     counts = {}
@@ -177,9 +177,9 @@ def analyse_auth(events):
             failed_users.append(event["user"])
 
         elif event["event"] == "ACCOUNT_LOCKED":
-            locked += 1
+            locked += 1                 # adds 1 to the "locked" variable if the line EXACTLY has "ACCOUNT_LOCKED"
         else:
-            logouts += 1
+            logouts += 1                # adds 1 to the "logouts" variable if the line EXACTLY has "LOGOUT"
 
     return {
         "success": success,
@@ -262,8 +262,8 @@ def find_observations(fw_events, auth_events, suspicious_ips):
     # IPs that had a successful login attempt
     success_ips = []
     for event in auth_events:
-        if event["event"] == "LOGIN_SUCCESS":
-            success_ips.append(event["src"])
+        if event["event"] == "LOGIN_SUCCESS": # adds every line with exactly "LOGIN_SUCCESS" to the
+            success_ips.append(event["src"])  # success_ips dictionary list
     success_counts = count_items(success_ips)
 
     allowed_text = []
@@ -274,12 +274,12 @@ def find_observations(fw_events, auth_events, suspicious_ips):
         if success_counts.get(ip, 0) > 0: # ips that had a successful login
             success_text.append(ip + " (" + str(success_counts[ip]) + ")")
 
-    if len(success_text) > 0:
+    if len(success_text) > 0: # only does the following IF success_text has something
         observations.append(
         "These suspicious-list IPs logged in successfully: " + ", ".join(success_text)
         + ". A known-bad address with a working login means an account may be compromised."
     )
-    if len(allowed_text) > 0:
+    if len(allowed_text) > 0: # only does the following IF allowed_text has something
         observations.append(
             "These suspicious-list IPs were ALLOWED through the firewall: " + ", ".join(allowed_text)
             + ". Traffic from a known-bad address should normally be blocked."
@@ -370,14 +370,14 @@ def main():
         fw_events, fw_bad = load_firewall_log(FIREWALL_LOG)
         auth_events, auth_bad = load_auth_log(AUTH_LOG)
     except FileNotFoundError as error:
-        print("ERROR: could not find a log file: ", error.filename)
+        print("ERROR: could not find a log file: ", error.filename) # prints when a log file is not found
         print("Put the log files in the same folder as this script.")
         return
 
     try:
         suspicious_ips = load_suspicious_ips(SUSPICIOUS_FILE)
     except FileNotFoundError:
-        print("Warning: suspicious_ips.txt not found, skipping that check.")
+        print("Warning: suspicious_ips.txt not found, skipping that check.") # prints when "suspicious_ips.txt" is not found
         suspicious_ips = []
 
     fw = analyse_firewall(fw_events)
@@ -398,14 +398,14 @@ def main():
                 "malformed_firewall_lines": fw_bad,
                 "malformed_auth_lines": auth_bad,
             },
-            OUTPUT_FOLDER / "investigation_summary.json",
+            OUTPUT_FOLDER / "investigation_summary.json", 
         )
         save_csv(observations, OUTPUT_FOLDER / "observations.csv")
     except OSError as error:
         print("ERROR: could not save the reports:", error)
         return
 
-    print()
+    print()                     # blank print for a cleaner output 
     print("Reports saved in:", OUTPUT_FOLDER)
 
 if __name__ == "__main__":
